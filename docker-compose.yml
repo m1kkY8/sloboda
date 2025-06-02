@@ -25,8 +25,10 @@ services:
       --agree-tos
       --non-interactive
       -d ${ROOT_DOMAIN}
+      -d ${EXEGOL_DOMAIN}
       -d ${WIKI_DOMAIN}
       -d ${NOTES_DOMAIN} 
+      --expand
     
   trilium:
     image: triliumnext/notes:latest
