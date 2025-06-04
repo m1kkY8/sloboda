@@ -94,6 +94,7 @@ services:
     network_mode: host
     pid: "host"
     volumes:
+      - /run/udev/data:/run/udev/data:ro
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
