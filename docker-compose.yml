@@ -87,6 +87,26 @@ services:
       - grafana-data:/var/lib/grafana
     restart: unless-stopped
 
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: "host"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx-exporter
+    depends_on:
+      - nginx
+    environment:
+      NGINX_STATUS_URL: "http://nginx-proxy/nginx_status"
+    restart: unless-stopped
+
 volumes:
   db-data:
   prometheus-data:
