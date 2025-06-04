@@ -1,4 +1,15 @@
 services:
+    portainer:
+      image: portainer/portainer-ce:lts
+      container_name: portainer
+      restart: always
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+        - portainer-data:/data
+      ports:
+        - "10.10.10.1:8000:8000"
+        - "10.10.10.1:9443:9443"
+  
     nginx:
         image: nginx:stable-alpine
         container_name: nginx-proxy
@@ -71,7 +82,7 @@ services:
             - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
             - prometheus-data:/prometheus
         ports:
-            - "10.10.10.1:9090:9090" 
+            - "10.10.10.1:9090:9090"
         restart: unless-stopped
 
     grafana:
@@ -82,7 +93,7 @@ services:
         environment:
             - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
         ports:
-            - "10.10.10.1:3000:3000" 
+            - "10.10.10.1:3000:3000"
         volumes:
             - grafana-data:/var/lib/grafana
         restart: unless-stopped
@@ -110,3 +121,4 @@ volumes:
     db-data:
     prometheus-data:
     grafana-data:
+    portainer-data:
