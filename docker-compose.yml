@@ -39,6 +39,7 @@ services:
       -d ${EXEGOL_DOMAIN}
       -d ${WIKI_DOMAIN}
       -d ${NOTES_DOMAIN}
+      -d ${JENKINS_DOMAIN}
       --expand
 
   trilium:
@@ -116,10 +117,19 @@ services:
     restart: unless-stopped
     command:
       - "--nginx.scrape-uri=http://nginx-proxy/nginx_status"
+      
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    #ports:
+      
+    volumes:
+      - jenkins-data:/var/jenkins_home
+    restart: unless-stopped
 
 volumes:
   db-data:
   prometheus-data:
   grafana-data:
   portainer-data:
-
+  jenkins-data:
