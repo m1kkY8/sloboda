@@ -4,3 +4,4 @@ certbot
 mc-data
 data
 minecraft
+acme.json

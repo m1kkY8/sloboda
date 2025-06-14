@@ -1,0 +1,21 @@
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    
+api:
+  insecure: true
+
+entryPoints:
+  web:
+    address: ":80"
+
+  websecure:
+    address: ":443"
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: 5rovicmilan89@gmail.com
+      storage: /letsencrypt/acme.json
+      tlsChallenge: {}
