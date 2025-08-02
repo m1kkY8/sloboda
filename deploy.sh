@@ -50,6 +50,10 @@ echo -e "${YELLOW}Adding Traefik Helm repository...${NC}"
 helm repo add traefik https://traefik.github.io/charts
 helm repo update
 
+# Install Traefik CRDs
+echo -e "${YELLOW}Installing Traefik CRDs...${NC}"
+kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v3.1/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml
+
 # Check if release already exists
 if helm list -n $NAMESPACE | grep -q $RELEASE_NAME; then
     echo -e "${YELLOW}Release $RELEASE_NAME already exists. Upgrading...${NC}"

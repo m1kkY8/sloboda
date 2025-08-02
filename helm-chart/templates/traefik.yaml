@@ -1,0 +1,259 @@
+{{- if .Values.traefik.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-traefik-config
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: traefik
+data:
+  traefik.yml: |
+    api:
+      dashboard: true
+      insecure: true
+    
+    entryPoints:
+      web:
+        address: ":80"
+        http:
+          redirections:
+            entrypoint:
+              to: websecure
+              scheme: https
+      websecure:
+        address: ":443"
+    
+    providers:
+      kubernetesIngress:
+        allowEmptyServices: true
+        allowExternalNameServices: true
+      kubernetesCRD:
+        allowCrossNamespace: true
+        allowExternalNameServices: true
+    
+    certificatesResolvers:
+      letsencrypt:
+        acme:
+          email: {{ .Values.traefik.certificatesResolvers.letsencrypt.acme.email }}
+          storage: /data/acme.json
+          tlsChallenge: {}
+    
+    log:
+      level: INFO
+    
+    accessLog: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-traefik
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: traefik
+spec:
+  replicas: {{ .Values.traefik.deployment.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sloboda-stack.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: traefik
+  template:
+    metadata:
+      labels:
+        {{- include "sloboda-stack.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: traefik
+    spec:
+      serviceAccountName: {{ include "sloboda-stack.fullname" . }}-traefik
+      containers:
+      - name: traefik
+        image: traefik:v3.1
+        imagePullPolicy: IfNotPresent
+        args:
+        - --configfile=/etc/traefik/traefik.yml
+        ports:
+        - name: web
+          containerPort: 80
+          protocol: TCP
+        - name: websecure
+          containerPort: 443
+          protocol: TCP
+        - name: traefik
+          containerPort: 8080
+          protocol: TCP
+        volumeMounts:
+        - name: config
+          mountPath: /etc/traefik
+          readOnly: true
+        - name: data
+          mountPath: /data
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "sloboda-stack.fullname" . }}-traefik-config
+      - name: data
+        {{- if .Values.traefik.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "sloboda-stack.fullname" . }}-traefik-data
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-traefik
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: traefik
+spec:
+  type: {{ .Values.traefik.service.type }}
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: web
+  - port: 443
+    targetPort: 443
+    protocol: TCP
+    name: websecure
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: traefik
+  selector:
+    {{- include "sloboda-stack.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: traefik
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-traefik
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: traefik
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-traefik
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: traefik
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - endpoints
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - extensions
+  - networking.k8s.io
+  resources:
+  - ingresses
+  - ingressclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - extensions
+  - networking.k8s.io
+  resources:
+  - ingresses/status
+  verbs:
+  - update
+- apiGroups:
+  - traefik.containo.us
+  - traefik.io
+  resources:
+  - middlewares
+  - middlewaretcps
+  - ingressroutes
+  - traefikservices
+  - ingressroutetcps
+  - ingressrouteudps
+  - tlsoptions
+  - tlsstores
+  - serverstransports
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-traefik
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: traefik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "sloboda-stack.fullname" . }}-traefik
+subjects:
+- kind: ServiceAccount
+  name: {{ include "sloboda-stack.fullname" . }}-traefik
+  namespace: {{ .Release.Namespace }}
+{{- if .Values.traefik.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-traefik-data
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: traefik
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.traefik.persistence.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.traefik.persistence.size }}
+{{- end }}
+{{- if .Values.traefik.ingressRoute.dashboard.enabled }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-traefik-dashboard
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: traefik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`traefik.{{ .Values.global.domain }}`)
+    kind: Rule
+    services:
+    - name: api@internal
+      kind: TraefikService
+  tls:
+    certResolver: letsencrypt
+{{- end }}
+{{- end }}

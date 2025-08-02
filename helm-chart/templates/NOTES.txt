@@ -1,5 +1,9 @@
 1. Get the application URLs by running these commands:
 
+{{- if .Values.traefik.ingressRoute.dashboard.enabled }}
+  Traefik Dashboard: https://traefik.{{ .Values.global.domain }}
+{{- end }}
+
 {{- if .Values.portainer.ingress.enabled }}
   Portainer: https://{{ .Values.portainer.ingress.host }}
 {{- end }}
