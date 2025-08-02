@@ -1,0 +1,116 @@
+{{- if .Values.portainer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-portainer
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: portainer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sloboda-stack.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: portainer
+  template:
+    metadata:
+      labels:
+        {{- include "sloboda-stack.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: portainer
+    spec:
+      containers:
+      - name: portainer
+        image: "{{ .Values.portainer.image.repository }}:{{ .Values.portainer.image.tag }}"
+        imagePullPolicy: {{ .Values.portainer.image.pullPolicy }}
+        ports:
+        - containerPort: 9000
+          name: http
+        - containerPort: 8000
+          name: edge
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+      volumes:
+      - name: data
+        {{- if .Values.portainer.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "sloboda-stack.fullname" . }}-portainer-data
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-portainer
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: portainer
+spec:
+  type: {{ .Values.portainer.service.type }}
+  ports:
+  - port: {{ .Values.portainer.service.ports.http }}
+    targetPort: 9000
+    protocol: TCP
+    name: http
+  - port: {{ .Values.portainer.service.ports.edge }}
+    targetPort: 8000
+    protocol: TCP
+    name: edge
+  selector:
+    {{- include "sloboda-stack.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: portainer
+{{- if .Values.portainer.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-portainer-data
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: portainer
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.portainer.persistence.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.portainer.persistence.size }}
+{{- end }}
+{{- if .Values.portainer.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-portainer
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: portainer
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+spec:
+  tls:
+  - hosts:
+    - {{ .Values.portainer.ingress.host }}
+    secretName: {{ include "sloboda-stack.fullname" . }}-portainer-tls
+  rules:
+  - host: {{ .Values.portainer.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "sloboda-stack.fullname" . }}-portainer
+            port:
+              number: {{ .Values.portainer.service.ports.http }}
+{{- end }}
+{{- end }}

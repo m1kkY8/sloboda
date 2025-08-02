@@ -1,0 +1,124 @@
+{{- if .Values.trilium.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-trilium
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trilium
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sloboda-stack.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: trilium
+  template:
+    metadata:
+      labels:
+        {{- include "sloboda-stack.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: trilium
+    spec:
+      containers:
+      - name: trilium
+        image: "{{ .Values.trilium.image.repository }}:{{ .Values.trilium.image.tag }}"
+        imagePullPolicy: {{ .Values.trilium.image.pullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: data
+          mountPath: /home/node/trilium-data
+        - name: timezone
+          mountPath: /etc/timezone
+          readOnly: true
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
+        resources:
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+      volumes:
+      - name: data
+        {{- if .Values.trilium.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "sloboda-stack.fullname" . }}-trilium-data
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      - name: timezone
+        hostPath:
+          path: /etc/timezone
+          type: File
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
+          type: File
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-trilium
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trilium
+spec:
+  type: {{ .Values.trilium.service.type }}
+  ports:
+  - port: {{ .Values.trilium.service.port }}
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "sloboda-stack.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: trilium
+{{- if .Values.trilium.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-trilium-data
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trilium
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.trilium.persistence.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.trilium.persistence.size }}
+{{- end }}
+{{- if .Values.trilium.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-trilium
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trilium
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+spec:
+  tls:
+  - hosts:
+    - {{ .Values.trilium.ingress.host }}
+    secretName: {{ include "sloboda-stack.fullname" . }}-trilium-tls
+  rules:
+  - host: {{ .Values.trilium.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "sloboda-stack.fullname" . }}-trilium
+            port:
+              number: {{ .Values.trilium.service.port }}
+{{- end }}
+{{- end }}

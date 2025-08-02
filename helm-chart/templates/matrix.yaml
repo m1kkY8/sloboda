@@ -1,0 +1,211 @@
+{{- if .Values.matrix.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-matrix-config
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: matrix
+data:
+  homeserver.yaml: |
+    server_name: "{{ .Values.matrix.env.SYNAPSE_SERVER_NAME }}"
+    pid_file: /data/homeserver.pid
+    web_client_location: https://app.element.io/
+    public_baseurl: https://{{ .Values.matrix.ingress.host }}/
+    
+    listeners:
+      - port: 8008
+        tls: false
+        type: http
+        x_forwarded: true
+        bind_addresses: ['::1', '127.0.0.1', '0.0.0.0']
+        resources:
+          - names: [client, federation]
+            compress: false
+
+    database:
+      name: sqlite3
+      args:
+        database: /data/homeserver.db
+
+    log_config: "/data/log.config"
+    
+    media_store_path: /data/media_store
+    uploads_path: /data/uploads
+    
+    max_upload_size: 10M
+    max_image_pixels: 32M
+    
+    dynamic_thumbnails: false
+    
+    url_preview_enabled: false
+    
+    enable_registration: false
+    
+    registration_shared_secret: "{{ randAlphaNum 32 }}"
+    
+    report_stats: {{ .Values.matrix.env.SYNAPSE_REPORT_STATS }}
+    
+    macaroon_secret_key: "{{ randAlphaNum 32 }}"
+    
+    form_secret: "{{ randAlphaNum 32 }}"
+    
+    signing_key_path: "/data/signing.key"
+    
+    trusted_key_servers:
+      - server_name: "matrix.org"
+
+  log.config: |
+    version: 1
+    formatters:
+      precise:
+        format: '%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(request)s - %(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: precise
+        stream: ext://sys.stdout
+    loggers:
+        synapse.storage.SQL:
+            level: INFO
+    root:
+        level: INFO
+        handlers: [console]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-matrix
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: matrix
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sloboda-stack.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: matrix
+  template:
+    metadata:
+      labels:
+        {{- include "sloboda-stack.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: matrix
+    spec:
+      containers:
+      - name: matrix
+        image: "{{ .Values.matrix.image.repository }}:{{ .Values.matrix.image.tag }}"
+        imagePullPolicy: {{ .Values.matrix.image.pullPolicy }}
+        ports:
+        - containerPort: 8008
+          name: http
+        env:
+        - name: SYNAPSE_SERVER_NAME
+          value: "{{ .Values.matrix.env.SYNAPSE_SERVER_NAME }}"
+        - name: SYNAPSE_REPORT_STATS
+          value: "{{ .Values.matrix.env.SYNAPSE_REPORT_STATS }}"
+        - name: SYNAPSE_CONFIG_PATH
+          value: "/data/homeserver.yaml"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: config
+          mountPath: /data/homeserver.yaml
+          subPath: homeserver.yaml
+        - name: config
+          mountPath: /data/log.config
+          subPath: log.config
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /_matrix/static/
+            port: 8008
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /_matrix/static/
+            port: 8008
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: data
+        {{- if .Values.matrix.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ include "sloboda-stack.fullname" . }}-matrix-data
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      - name: config
+        configMap:
+          name: {{ include "sloboda-stack.fullname" . }}-matrix-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-matrix
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: matrix
+spec:
+  type: {{ .Values.matrix.service.type }}
+  ports:
+  - port: {{ .Values.matrix.service.port }}
+    targetPort: 8008
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "sloboda-stack.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: matrix
+{{- if .Values.matrix.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-matrix-data
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: matrix
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.matrix.persistence.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.matrix.persistence.size }}
+{{- end }}
+{{- if .Values.matrix.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "sloboda-stack.fullname" . }}-matrix
+  labels:
+    {{- include "sloboda-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: matrix
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+spec:
+  tls:
+  - hosts:
+    - {{ .Values.matrix.ingress.host }}
+    secretName: {{ include "sloboda-stack.fullname" . }}-matrix-tls
+  rules:
+  - host: {{ .Values.matrix.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "sloboda-stack.fullname" . }}-matrix
+            port:
+              number: {{ .Values.matrix.service.port }}
+{{- end }}
+{{- end }}
