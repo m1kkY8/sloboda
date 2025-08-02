@@ -1,7 +1,7 @@
 # Global configuration
 global:
   domain: slobodausisivac.rocks
-  storageClass: local-path  # K3s default storage class
+  storageClass: local-path # K3s default storage class
   timezone: Europe/Belgrade
 
 # Traefik configuration
@@ -95,7 +95,7 @@ grafana:
     size: 2Gi
     storageClass: local-path
   env:
-    GF_SECURITY_ADMIN_PASSWORD: admin123  # Change this!
+    GF_SECURITY_ADMIN_PASSWORD: admin123 # Change this!
   ingress:
     enabled: true
     host: grafana.slobodausisivac.rocks
